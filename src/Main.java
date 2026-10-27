@@ -1,3 +1,4 @@
+
 import java.util.Scanner;
 
 public class Main {
@@ -5,10 +6,10 @@ public class Main {
         Scanner sc = new Scanner(System.in);
         InventoryManager manager = new InventoryManager();
 
-        int choice;
+        int choice = 0;
 
         do {
-            System.out.println("\nINVENTORY MANAGEMENT SYSTEM");
+            System.out.println("\n===== INVENTORY MANAGEMENT SYSTEM =====");
             System.out.println("1. Add Product");
             System.out.println("2. View All Products");
             System.out.println("3. Search Product");
@@ -16,35 +17,45 @@ public class Main {
             System.out.println("5. Sell Product");
             System.out.println("6. View Low-Stock Products");
             System.out.println("7. View Transaction History");
-            System.out.println("8. Exit");
+            System.out.println("8. Update Product");
+            System.out.println("9. Delete Product");
+            System.out.println("10. Exit");
             System.out.print("Enter your choice: ");
+
+            if (!sc.hasNextInt()) {
+                System.out.println("Please enter a valid number.");
+                sc.nextLine();
+                continue;
+            }
 
             choice = sc.nextInt();
 
+            int id, quantity;
+            double price;
+
             switch (choice) {
                 case 1:
-                    System.out.print("Enter product ID: ");
-                    int id = sc.nextInt();
                     sc.nextLine();
 
                     System.out.print("Enter product name: ");
-                    String name = sc.nextLine();
+                    String name = sc.nextLine().trim();
 
                     System.out.print("Enter price: ");
-                    double price = sc.nextDouble();
+                    price = sc.nextDouble();
 
                     System.out.print("Enter initial quantity: ");
-                    int quantity = sc.nextInt();
+                    quantity = sc.nextInt();
 
                     System.out.print("Enter minimum stock limit: ");
                     int minimum = sc.nextInt();
 
-                    if (id <= 0 || price <= 0 ||
+                    if (name.isEmpty() || price <= 0 ||
                         quantity < 0 || minimum < 0) {
                         System.out.println("Invalid product details.");
                     } else {
                         Product product = new Product(
-                            id, name, price, quantity, minimum);
+                            0, name, price, quantity, minimum
+                        );
                         manager.addProduct(product);
                     }
                     break;
@@ -88,14 +99,41 @@ public class Main {
                     break;
 
                 case 8:
-                    System.out.println("Exiting Inventory System.");
+                    System.out.print("Enter product ID to update: ");
+                    id = sc.nextInt();
+
+                    System.out.print("Enter new price: ");
+                    price = sc.nextDouble();
+
+                    System.out.print("Enter new quantity: ");
+                    quantity = sc.nextInt();
+
+                    manager.updateProduct(id, price, quantity);
+                    break;
+
+                case 9:
+                    System.out.print("Enter product ID to delete: ");
+                    id = sc.nextInt();
+
+                    System.out.print("Enter 1 to confirm deletion: ");
+                    int confirm = sc.nextInt();
+
+                    if (confirm == 1) {
+                        manager.deleteProduct(id);
+                    } else {
+                        System.out.println("Deletion cancelled.");
+                    }
+                    break;
+
+                case 10:
+                    System.out.println("Exiting Inventory System. Goodbye!");
                     break;
 
                 default:
-                    System.out.println("Invalid choice.");
+                    System.out.println("Invalid choice. Try again.");
             }
 
-        } while (choice != 8);
+        } while (choice != 10);
 
         sc.close();
     }

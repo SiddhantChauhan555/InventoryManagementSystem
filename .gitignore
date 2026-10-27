@@ -1,0 +1,7 @@
+out/
+*.class
+.env
+config.properties
+*.sql.bak
+products.txt
+transactions.txt

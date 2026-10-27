@@ -1,226 +1,158 @@
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.List;
 
 public class InventoryManager implements StockOperations {
-    private Product[] products;
-    private int count;
-    private final int MAX_PRODUCTS = 100;
 
-    public InventoryManager() {
-        products = new Product[MAX_PRODUCTS];
-        count = 0;
-        loadProducts();
-    }
+    private final ProductDAO dao = new ProductDAO();
 
     public void addProduct(Product product) {
-        if (count == MAX_PRODUCTS) {
-            System.out.println("Inventory is full.");
+        if (product.getProductId() > 0) {
+            System.out.println(
+                "Product ID auto-generates in MySQL. Enter 0 for ID."
+            );
             return;
         }
 
-        if (findProduct(product.getProductId()) != -1) {
-            System.out.println("Product ID already exists.");
+        if (product.getProductName() == null ||
+            product.getProductName().trim().isEmpty() ||
+            product.getPrice() <= 0 ||
+            product.getQuantity() < 0 ||
+            product.getMinimumStock() < 0) {
+            System.out.println("Invalid product details.");
             return;
         }
 
-        products[count] = product;
-        count++;
-        saveProducts();
-        System.out.println("Product added successfully.");
+        if (dao.addProduct(product)) {
+            System.out.println("Product added successfully!");
+        }
     }
 
     public void viewProducts() {
-        if (count == 0) {
-            System.out.println("No products available.");
+        List<Product> products = dao.getAllProducts();
+
+        if (products.isEmpty()) {
+            System.out.println("No products found.");
             return;
         }
 
-        for (int i = 0; i < count; i++) {
-            products[i].displayProduct();
+        for (Product p : products) {
+            p.displayProduct();
             System.out.println("--------------------");
         }
     }
 
     public void searchProduct(int productId) {
-        int index = findProduct(productId);
+        Product p = dao.getProductById(productId);
 
-        if (index == -1) {
+        if (p == null) {
             System.out.println("Product not found.");
         } else {
-            products[index].displayProduct();
+            p.displayProduct();
         }
     }
 
     public void purchaseStock(int productId, int quantity) {
-        int index = findProduct(productId);
-
-        if (index == -1) {
-            System.out.println("Product not found.");
-            return;
-        }
-
         if (quantity <= 0) {
             System.out.println("Quantity must be greater than zero.");
             return;
         }
 
-        Product product = products[index];
-        product.setQuantity(product.getQuantity() + quantity);
+        String sql =
+            "UPDATE products SET quantity = quantity + ? WHERE product_id = ?";
 
-        saveProducts();
-        saveTransaction("PURCHASE", productId, quantity);
-        System.out.println("Stock purchased successfully.");
+        try (Connection con = DBConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setInt(1, quantity);
+            ps.setInt(2, productId);
+
+            if (ps.executeUpdate() > 0) {
+                System.out.println("Stock purchased successfully!");
+            } else {
+                System.out.println("Product not found.");
+            }
+
+        } catch (SQLException e) {
+            System.out.println("Purchase failed: " + e.getMessage());
+        }
     }
 
     public void sellProduct(int productId, int quantity) {
-        int index = findProduct(productId);
-
-        if (index == -1) {
-            System.out.println("Product not found.");
-            return;
-        }
-
-        if (quantity <= 0) {
-            System.out.println("Quantity must be greater than zero.");
-            return;
-        }
-
-        Product product = products[index];
-
-        if (quantity > product.getQuantity()) {
-            System.out.println("Insufficient stock.");
-            return;
-        }
-
-        product.setQuantity(product.getQuantity() - quantity);
-
-        saveProducts();
-        saveTransaction("SALE", productId, quantity);
-        System.out.println("Product sold successfully.");
-
-        if (product.getQuantity() <= product.getMinimumStock()) {
-            System.out.println("Low-stock alert: " + product.getProductName());
+        if (dao.recordSale(productId, quantity)) {
+            System.out.println("Sale completed successfully!");
         }
     }
 
     public void showLowStock() {
-        boolean found = false;
+        List<Product> products = dao.getLowStockProducts();
 
-        for (int i = 0; i < count; i++) {
-            if (products[i].getQuantity() <= products[i].getMinimumStock()) {
-                products[i].displayProduct();
-                System.out.println("LOW STOCK");
-                found = true;
-            }
+        if (products.isEmpty()) {
+            System.out.println("No low-stock products.");
+            return;
         }
 
-        if (!found) {
-            System.out.println("No low-stock products.");
+        for (Product p : products) {
+            p.displayProduct();
+            System.out.println("WARNING: LOW STOCK");
+            System.out.println("--------------------");
         }
     }
+public void updateProduct(int productId, double price, int quantity) {
+    if (price <= 0 || quantity < 0) {
+        System.out.println("Invalid price or quantity.");
+        return;
+    }
 
+    if (dao.updateProduct(productId, price, quantity)) {
+        System.out.println("Product updated successfully!");
+    } else {
+        System.out.println("Product not found or update failed.");
+    }
+}
+
+public void deleteProduct(int productId) {
+    if (dao.deleteProduct(productId)) {
+        System.out.println("Product deleted successfully!");
+    } else {
+        System.out.println("Product not found or deletion failed.");
+    }
+}
     public void viewTransactions() {
-        try {
-            BufferedReader br = new BufferedReader(
-                new FileReader("transactions.txt"));
+        String sql =
+            "SELECT sale_id, product_id, quantity_sold, unit_price, " +
+            "total_amount, sale_date FROM sales ORDER BY sale_id DESC";
 
-            String line;
+        try (Connection con = DBConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
             boolean found = false;
 
-            while ((line = br.readLine()) != null) {
-                System.out.println(line);
+            while (rs.next()) {
                 found = true;
+                System.out.println("Sale ID: " + rs.getInt("sale_id"));
+                System.out.println("Product ID: " + rs.getInt("product_id"));
+                System.out.println("Quantity sold: " +
+                                   rs.getInt("quantity_sold"));
+                System.out.println("Unit price: Rs. " +
+                                   rs.getBigDecimal("unit_price"));
+                System.out.println("Total: Rs. " +
+                                   rs.getBigDecimal("total_amount"));
+                System.out.println("Date: " + rs.getTimestamp("sale_date"));
+                System.out.println("--------------------");
             }
-
-            br.close();
 
             if (!found) {
-                System.out.println("No transactions recorded.");
-            }
-        } catch (IOException e) {
-            System.out.println("No transaction history available.");
-        }
-    }
-
-    private int findProduct(int productId) {
-        for (int i = 0; i < count; i++) {
-            if (products[i].getProductId() == productId) {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    private void saveProducts() {
-        try {
-            FileWriter fw = new FileWriter("products.txt");
-
-            for (int i = 0; i < count; i++) {
-                fw.write(products[i].getProductId() + "\n");
-                fw.write(products[i].getProductName() + "\n");
-                fw.write(products[i].getPrice() + "\n");
-                fw.write(products[i].getQuantity() + "\n");
-                fw.write(products[i].getMinimumStock() + "\n");
+                System.out.println("No sales recorded yet.");
             }
 
-            fw.close();
-        } catch (IOException e) {
-            System.out.println("Error saving products.");
-        }
-    }
-
-    private void loadProducts() {
-        try {
-            BufferedReader br = new BufferedReader(
-                new FileReader("products.txt"));
-
-            String idLine;
-
-            while ((idLine = br.readLine()) != null) {
-                String nameLine = br.readLine();
-                String priceLine = br.readLine();
-                String quantityLine = br.readLine();
-                String minimumLine = br.readLine();
-
-                if (nameLine == null || priceLine == null ||
-                    quantityLine == null || minimumLine == null) {
-                    break;
-                }
-
-                int id = Integer.parseInt(idLine);
-                String name = nameLine;
-                double price = Double.parseDouble(priceLine);
-                int quantity = Integer.parseInt(quantityLine);
-                int minimum = Integer.parseInt(minimumLine);
-
-                if (count < MAX_PRODUCTS && findProduct(id) == -1) {
-                    products[count] = new Product(
-                        id, name, price, quantity, minimum);
-                    count++;
-                }
-            }
-
-            br.close();
-        } catch (IOException e) {
-            System.out.println("Starting with an empty inventory.");
-        } catch (NumberFormatException e) {
-            System.out.println("Invalid data found in products file.");
-        }
-    }
-
-    private void saveTransaction(String type, int productId, int quantity) {
-        try {
-            FileWriter fw = new FileWriter("transactions.txt", true);
-
-            fw.write(type + " | Product ID: " + productId
-                + " | Quantity: " + quantity + "\n");
-
-            fw.close();
-        } catch (IOException e) {
-            System.out.println("Error saving transaction.");
+        } catch (SQLException e) {
+            System.out.println("Could not read sales history: " +
+                               e.getMessage());
         }
     }
 }
